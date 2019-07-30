@@ -1,0 +1,10 @@
+sample_name,sample_group
+pooled_R1.mzXML,pbqc
+pooled_R2.mzXML,pbqc
+Pooled_R3.mzXML,pbqc
+Treatment1_R1.mzXML,treatment1
+Treatment1_R2.mzXML,treatment1
+Treatment1_R3.mzXML,treatment1
+Treatment2_R1.mzXML,treatment2
+Treatment2_R2.mzXML,treatment2
+Treatment2_R3.mzXML,treatment2
