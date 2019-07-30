@@ -17,4 +17,4 @@ Not really another version; just a re-typed version so that I can understand wha
 4. Annotation with CAMERA
 5. Descriptive Statistics
 
-All other files/directories in the repo are created in the process of running the script.
+All other files/directories in the repo are created in the process of running the script. Note that all `.png` files are `.gitignored`.
