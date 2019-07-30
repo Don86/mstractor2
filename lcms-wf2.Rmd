@@ -1,0 +1,149 @@
+---
+title: "wf2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pathToProject <- "/Users/don/Documents/MStractor-refactored"
+knitr::opts_knit$set(root.dir = pathToProject)
+```
+
+Load libraries:
+```{r}
+library("pacman")
+# Load all required libraries. Suppresses all messages AND warnings.
+pacman::p_load("xcms", "RANN", "modeest", "CAMERA", "tools", "tidyverse",
+               "parallel", "pander", "magrittr",  "scales", "RColorBrewer",
+               "dplyr", "ggpubr", "dsm", "gtools", "plotly", 
+               "htmltools", "berryFunctions", "fda")
+# Ommitted: MSeasy, plyr
+```
+
+## 1. Input Params
+
+Various input parameters, including:
+* working directory
+* instrument parameters (`rtStart`, `rtEnd`...)
+
+```{r}
+# path to reference file
+ref.fn <- paste0(pathToProject, "/data/pooled_R1.mzXML")
+
+fn.ls <- dir(paste0(pathToProject, "/data/"), full.names=TRUE, pattern="\\.mzXML", recursive=TRUE)
+print(fn.ls)
+
+#QCdataAll <- TRUE # IF TRUE, EICs for every molecular feature will be plotted
+CPUs <- "max"      # Concurrent CPU threads to run. "max" to autodetect
+updatePackages <- "FALSE" # If TRUE, all packages will be automatically updated
+
+# "Acquisition Parameters" - Parameters relating to the acquisition -------
+# ========== Chromatography parameters ==========
+# Tuned to faahKO data (Agilent 1100 400 bar HPLC)
+rtStart <- 1    # Start region of interest (in seconds)
+rtEnd <- "max"  # End region of interest (in seconds). "max" for RT full range
+FWHM_min <- 10  # FWHM in seconds of narrowest peak (10)
+FWHM_max <- 90  # FWHM in seconds of broadest peak (40)
+rtDelta <- 3705-3673   # Max observed difference in retention time (s) across all
+# samples (peak apex to peak apex delta).
+
+# ========== MS parameters ==========
+# Tuned for faahKO data (Agilent MSD SL ion trap)
+mzPol <- "negative" # Set to "positive" or "negative" ion mode
+mzStart <- 100  # Start of m/z region of interest
+mzEnd <- 1650   # End of m/z region of interest
+mzErrAbs <- 0.01 # Max m/z delta expected for the same feature across all samples
+mzZmax <- 3     # Max charge state expected
+EICsMax <- 30   # Max number of chrom. peaks expected for a single EIC
+sens <- 1      # Factor (between 0 and 1) for peak extraction sensitivity
+# Impacts peak picking thresholds, RAM & CPU utilisation.
+# Start with ~0.5.
+fileType <- "mzXML" # MS data file type e.g. "mzData", "mzML", "mzXML", "CDF"
+
+# Init timer
+runtimeStart <- Sys.time()
+```
+
+# 2. Check out the Reference
+
+For QC purposes.
+
+```{r}
+# Load a reference file & define the scan range
+# Set mz step size, profStep, for seeking new EIC traces
+refRaw <- xcmsRaw(ref.fn, profstep= mzErrAbs*4, includeMSn= FALSE, mslevel= NULL,
+                  scanrange= NULL)
+
+# creates a new dir, called QC, if one doesn't already exist.
+dir.create("./QC")
+
+# Plot TIC of reference sample
+#graphics.off
+#png("./QC/Ref_TIC.png", width = 1024, height = 768, units = "px")
+plotTIC(refRaw, ident= FALSE, msident= FALSE)
+#dev.off()
+```
+
+```{r}
+# Determine scan range
+scanStart <- head(which(refRaw@scantime > rtStart & refRaw@scantime < rtEnd),
+                  n= 1)
+
+if (identical(rtEnd, "max")) {
+  scanEnd <- max(refRaw@scanindex)
+  rtEnd <- refRaw@scantime[which(refRaw@scanindex == scanEnd)]
+} else {
+  scanEnd <- tail(which(refRaw@scantime > rtStart & refRaw@scantime < rtEnd),
+                  n= 1)
+}
+
+# Set peak picking parameters
+
+pwMin <- FWHM_min*1.3
+pwMax <- pwMin*1.3
+mzErrPpmMin <- mzErrAbs/2/mzEnd*1000000
+mzErrPpmMax <- mzErrAbs/2/mzStart*1000000
+mzErrPpmMean <- mean(c(mzErrPpmMin,mzErrPpmMax))
+mzdiff <- mzErrAbs/5
+intThresh <- as.integer(quantile(refRaw@env$intensity,1-sens)*10)
+snThresh <- 30/sens
+integ <- 1
+fitGauss <- FALSE
+sleep <- 0
+
+# Plot picked peaks to file
+#sleep <- 0.001
+#png(file.path("./QC/Pks/%003d.png"), h=768, w=1024)
+refPks <- findPeaks(refRaw, method= 'centWave', ppm= mzErrPpmMin*2,
+                    peakwidth= c(pwMin, pwMax), snthresh= snThresh,
+                    prefilter= c(5,intThresh), mzCenterFun= "mean",
+                    integrate= integ, mzdiff= mzdiff, verbose.columns= TRUE,
+                    fitgauss= fitGauss, noise= intThresh, sleep= sleep)
+#dev.off()
+#Pks <- refPks[,c("rt","mz","maxo","into","intb","sn","egauss")]
+#write.table(Pks, file= "./Pks.tsv", sep="\t")
+# These won't look great, but that's expected.
+png("./QC/Ref_EICs_100.png", width = 1024, height = 768, units = "px")
+plotPeaks(refRaw, refPks,  c(10,10), width = FWHM_min*10)
+dev.off()
+```
+
+
+```{r}
+profmethod <- "bin"
+profStep <- mzErrAbs*4
+refRaw <- xcmsRaw(ref.fn, profstep= profStep, includeMSn= FALSE, mslevel= NULL,
+                  scanrange= NULL)
+refRaw
+
+# Plot TIC of reference sample to file
+#dir.create("./QC")
+#graphics.off()
+#png("./QC/Ref_TIC.png", width = 1024, height = 768, units = "px")
+plotTIC(refRaw, ident= FALSE, msident= FALSE)
+#dev.off()
+
+
+
+```
+
